@@ -290,61 +290,45 @@ do_char(struct hd44780_state *state, char ch)
 
 	if (esc) {
 		switch(ch) {
-		case 'b':
-			hd44780_command(state, CMD_BKSP);
-			break;
-		case 'f':
-			hd44780_command(state, CMD_CLR);
-			break;
-		case 'n':
-			hd44780_command(state, CMD_NL);
-			break;
-		case 'r':
-			hd44780_command(state, CMD_CR);
-			break;
 		case 'R':
 			hd44780_command(state, CMD_RESET);
 			break;
-		case 'v':
+		case 'H':
 			hd44780_command(state, CMD_HOME);
-			break;
-		case '\\':
-			hd44780_putc(state, '\\');
-			break;
-		default:
-			hd44780_command(state, ch);
 			break;
 		}
 		esc = 0;
-	} else {
-		if (ch == '\\') {
-			esc = 1;
-			return;
-		}
-		switch(ch) {
-		case '\n':
-			hd44780_command(state, CMD_NL);
-			break;
-		case '\r':
-			hd44780_command(state, CMD_CR);
-			break;
-		case '\t':
-			hd44780_command(state, CMD_TAB);
-			break;
-		case '\a':
-			hd44780_command(state, CMD_FLASH);
-			break;
-		case '\b':
-			hd44780_command(state, CMD_BKSP);
-			break;
-		case '\f':
-			hd44780_command(state, CMD_CLR);
-			break;
-		default:
-			if (vflag || isprint(ch))
-				hd44780_putc(state, ch);
-			break;
-		}
+		return;
+	}
+
+	if (ch == 27) {
+		esc = 1;
+		return;
+	}
+
+	switch(ch) {
+	case '\n':
+		hd44780_command(state, CMD_NL);
+		break;
+	case '\r':
+		hd44780_command(state, CMD_CR);
+		break;
+	case '\t':
+		hd44780_command(state, CMD_TAB);
+		break;
+	case '\a':
+		hd44780_command(state, CMD_FLASH);
+		break;
+	case '\b':
+		hd44780_command(state, CMD_BKSP);
+		break;
+	case '\f':
+		hd44780_command(state, CMD_CLR);
+		break;
+	default:
+		if (isascii(ch) && isprint(ch))
+			hd44780_putc(state, ch);
+		break;
 	}
 }
 
