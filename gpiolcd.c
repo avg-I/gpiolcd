@@ -619,7 +619,7 @@ hd44780_command(struct hd44780_state *state, enum command cmd)
 		if (state->hd_col + i > state->hd_cols)
 			i = state->hd_cols - state->hd_col;
 		while (i-- > 0)
-			hd44780_output(state, HD_DATA, ' ');
+			hd44780_putc(state, ' ');
 		break;
 
 	case CMD_FLASH:
