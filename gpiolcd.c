@@ -45,14 +45,16 @@ static char	*progname;
  * Note that unrecognised command escapes are passed through with
  * the command value set to the ASCII value of the escaped character.
  */
-#define CMD_RESET	0
-#define CMD_BKSP	1
-#define CMD_CLR		2
-#define CMD_NL		3
-#define CMD_CR		4
-#define CMD_HOME	5
-#define CMD_TAB		6
-#define CMD_FLASH	7
+enum command {
+	CMD_RESET,
+	CMD_BKSP,
+	CMD_CLR,
+	CMD_NL,
+	CMD_CR,
+	CMD_HOME,
+	CMD_TAB,
+	CMD_FLASH,
+};
 
 enum reg_type {
 	HD_COMMAND,
@@ -92,7 +94,7 @@ static struct hd44780_state {
 /* Driver functions */
 static void	hd44780_prepare(char *devname, struct hd44780_state * state);
 static void	hd44780_finish(void);
-static void	hd44780_command(struct hd44780_state *state, int cmd);
+static void	hd44780_command(struct hd44780_state *state, enum command cmd);
 static void	hd44780_putc(struct hd44780_state *state, int c);
 
 static void	do_char(struct hd44780_state *state, char ch);
@@ -512,7 +514,7 @@ hd44780_calc_addr(struct hd44780_state *state)
 }
 
 static void
-hd44780_command(struct hd44780_state *state, int cmd)
+hd44780_command(struct hd44780_state *state, enum command cmd)
 {
 	int i;
 	uint8_t	val;
