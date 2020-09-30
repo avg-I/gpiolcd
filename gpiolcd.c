@@ -493,6 +493,9 @@ hd44780_finish(void)
 
 #define	HD_CMD_SET_ADDR			0x80
 
+#define	HD_LINE_DRAM_SIZE		40
+#define	HD_LINE1_DRAM_OFFSET		0x40
+
 static uint8_t
 hd44780_calc_addr(struct hd44780_state *state)
 {
@@ -500,7 +503,7 @@ hd44780_calc_addr(struct hd44780_state *state)
 
 	addr = state->hd_col;
 	if (state->hd_row == 1 || state->hd_row == 3)
-		addr += 0x40;	/* FIXED in hardware. */
+		addr += HD_LINE1_DRAM_OFFSET;
 	if (state->hd_row == 2 || state->hd_row == 3)
 		addr += state->hd_cols;
 	return (addr);
@@ -565,6 +568,14 @@ hd44780_command(struct hd44780_state *state, enum command cmd)
 
 	case CMD_BKSP:
 		if (state->hd_col > 0) {
+			/*
+			 * Move the cursor back, overwrite with a space
+			 * and move back again.
+			 */
+			hd44780_output(state, HD_COMMAND, HD_CMD_MOVE |
+			    HD_MOVE_CURSOR | HD_MOVE_LEFT);
+			state->hd_col--;	/* NB: putc increments hd_col */
+			hd44780_putc(state, ' ');
 			hd44780_output(state, HD_COMMAND, HD_CMD_MOVE |
 			    HD_MOVE_CURSOR | HD_MOVE_LEFT);
 			state->hd_col--;
@@ -577,19 +588,20 @@ hd44780_command(struct hd44780_state *state, enum command cmd)
 
 	case CMD_NL:
 		/*
-		 * If there is no space for another line, then move the cursor
-		 * to the very end.  This was no characters will be output
-		 * until the screen is cleared or the cursor is moved otherwise.
+		 * Fill the remainder of the current line with spaces.  If there
+		 * is no space for another line, then the cursor is held at the
+		 * end position.  This way no characters will be output until
+		 * the screen is cleared or the cursor is moved otherwise.
 		 */
+		while (state->hd_col < state->hd_cols)	/* NB: putc increments hd_col */
+			hd44780_putc(state, ' ');
 		if (state->hd_row < state->hd_lines - 1) {
 			state->hd_row++;
 			state->hd_col = 0;
-		} else {
-			state->hd_col = state->hd_cols;
+			val = hd44780_calc_addr(state);
+			hd44780_output(state, HD_COMMAND, HD_CMD_SET_ADDR | val);
+			usleep(1000);
 		}
-		val = hd44780_calc_addr(state);
-		hd44780_output(state, HD_COMMAND, HD_CMD_SET_ADDR | val);
-		usleep(1000);
 		break;
 
 	case CMD_CR:
