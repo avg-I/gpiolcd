@@ -68,11 +68,6 @@ static char	*progname;
 
 #define	DEFAULT_DEVICE	"/dev/gpioc0"
 
-/*
- * Commands
- * Note that unrecognised command escapes are passed through with
- * the command value set to the ASCII value of the escaped character.
- */
 enum command {
 	CMD_RESET,
 	CMD_BKSP,
@@ -128,7 +123,6 @@ static void	hd44780_putc(struct hd44780_state *state, int c);
 static void	do_char(struct hd44780_state *state, char ch);
 
 static int	debuglevel = 0;
-static int	vflag = 0;
 
 int
 main(int argc, char *argv[])
@@ -155,7 +149,7 @@ main(int argc, char *argv[])
 	state->pins[HD_PIN_E] = 2;
 	state->pins[HD_PIN_DAT0] = 4;
 
-	while ((ch = getopt(argc, argv, "BCdD:E:f:Fh:I:L:OR:vw:W:")) != -1) {
+	while ((ch = getopt(argc, argv, "BCdD:E:f:Fh:I:L:OR:w:W:")) != -1) {
 		switch(ch) {
 		case 'd':
 			debuglevel++;
@@ -176,9 +170,6 @@ main(int argc, char *argv[])
 				fprintf(stderr, "invalid number of columsn %s\n", optarg);
 				usage();
 			}
-			break;
-		case 'v':
-			vflag = 1;
 			break;
 		case 'B':
 			state->hd_blink = 1;
@@ -284,10 +275,12 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: %s [-v] [-d drivername] [-f device] [-o options] [args...]\n", progname);
-	fprintf(stderr, "Supported hardware: Hitachi HD44780 and compatibles");
+	fprintf(stderr, "usage: %s [-f device] [-d] [-B] [-C] [-F] [-O] "
+	    "[-h <n>] [-w <n>] [-R <n>]\n"
+	    "\t[-W <n>] [-E <n>] [-L <n>] [-D <n>] [-I <n>] [args...]\n",
+	    progname);
+	fprintf(stderr, "Supported hardware: Hitachi HD44780 and compatibles\n");
 	fprintf(stderr, "   -d      Increase debugging\n");
-	fprintf(stderr, "   -v      Allow non-printable characters\n");
 	fprintf(stderr, "   -f      Specify device, default is '%s'\n", DEFAULT_DEVICE);
 	fprintf(stderr, "   -h <n>  n-line display (default 2)\n"
 			"   -w <n>  n-column display (default 20)\n"
@@ -301,14 +294,16 @@ usage(void)
 			"   -O      Turn backlight on (default off)\n"
 			"   -D <n>  First data pin number (default 4)\n"
 			"   -I <n>  Data interface width (only 4 is supported)\n");
-	fprintf(stderr, "  args     Message strings.  Embedded escapes supported:\n");
-	fprintf(stderr, "                  \\b	Backspace\n");
-	fprintf(stderr, "                  \\f	Clear display, home cursor\n");
-	fprintf(stderr, "                  \\n	Newline\n");
-	fprintf(stderr, "                  \\r	Carriage return\n");
-	fprintf(stderr, "                  \\R	Reset display\n");
-	fprintf(stderr, "                  \\v	Home cursor\n");
-	fprintf(stderr, "                  \\\\	Literal \\\n");
+	fprintf(stderr, "  args     Message strings.\n");
+	fprintf(stderr, "           Some ASCII control characters and escapes sequences are supported:\n");
+	fprintf(stderr, "                  <BS> (\\b)	Backspace\n");
+	fprintf(stderr, "                  <LF> (\\f)	Clear display, home cursor\n");
+	fprintf(stderr, "                  <NL> (\\n)	Newline\n");
+	fprintf(stderr, "                  <CR> (\\r)	Carriage return\n");
+	fprintf(stderr, "                  <HT> (\\t)	Tab\n");
+	fprintf(stderr, "                  <BEL> (\\a)	Flash screen\n");
+	fprintf(stderr, "                  <ESC>R	Reset display\n");
+	fprintf(stderr, "                  <ESC>H	Home cursor\n");
 	fprintf(stderr, "           If args not supplied, strings are read from standard input\n");
 	exit(EX_USAGE);
 }
@@ -361,36 +356,6 @@ do_char(struct hd44780_state *state, char ch)
 		break;
 	}
 }
-
-#if 0
-static void
-hd_sctrl(uint8_t val)
-{
-	struct gpio_access_32 io;
-	int err;
-
-	io.first_pin = 0;
-	io.clear_pins = 0x07;
-	io.change_pins = val & 0x07;
-	err = ioctl(hd_fd, GPIOACCESS32, &io);
-	if (err != 0)
-		debug(1, "%s: error %d\n", __func__, errno);
-}
-
-static void
-hd_sdata(uint8_t val)
-{
-	struct gpio_access_32 io;
-	int err;
-
-	io.first_pin = 0;
-	io.clear_pins = 0xf0;
-	io.change_pins = val << 4;
-	err = ioctl(hd_fd, GPIOACCESS32, &io);
-	if (err != 0)
-		debug(1, "%s: error %d\n", __func__, errno);
-}
-#endif
 
 static void
 hd44780_strobe(struct hd44780_state *state)
