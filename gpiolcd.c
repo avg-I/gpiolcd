@@ -371,7 +371,7 @@ hd44780_set_pin(struct hd44780_state *state, enum hd_pin_id pin, bool on)
 	req.gp_value = on;
 	err = ioctl(state->hd_fd, GPIOSET, &req);
 	if (err != 0)
-		debug(1, "%s: error %d\n", __func__, errno);
+		debug(1, "%s: error %d", __func__, errno);
 }
 
 static void
@@ -417,6 +417,29 @@ hd44780_output(struct hd44780_state *state, enum reg_type type, uint8_t data)
 }
 
 static void
+hd44780_output4(struct hd44780_state *state, enum reg_type type, uint8_t data)
+{
+	int i;
+
+	debug(3, "%s -> 0x%02x", (type == HD_COMMAND) ? "cmd " : "data", data);
+
+	hd44780_set_pin(state, HD_PIN_RW, false);
+
+	if (type == HD_COMMAND)
+		hd44780_set_pin(state, HD_PIN_RS, false);
+	else
+		hd44780_set_pin(state, HD_PIN_RS, true);
+
+	/* Set upper nibble of data. */
+	for (i = 0; i < 4; i++) {
+		hd44780_set_pin(state, HD_PIN_DAT0 + i,
+		    ((1 << (i + 4)) & data) != 0);
+	}
+
+	hd44780_strobe(state);
+}
+
+static void
 hd44780_prepare(char *devname, struct hd44780_state *state)
 {
 	struct gpio_pin cfg;
@@ -425,21 +448,45 @@ hd44780_prepare(char *devname, struct hd44780_state *state)
 	if ((state->hd_fd = open(devname, O_RDWR, 0)) == -1)
 		err(EX_OSFILE, "can't open '%s'", devname);
 
-	/* Configure GPIO pins and reset the LCD. */
+	/*
+	 * Before anything else set E as input to avoid triggering
+	 * it as a possible side-effect of changing other pins.
+	 */
+	cfg.gp_pin = state->pins[HD_PIN_E];
+	cfg.gp_flags = GPIO_PIN_INPUT;
+	error = ioctl(state->hd_fd, GPIOSETCONFIG, &cfg);
+	if (error != 0)
+		err(1, "configuring pin %d as input failed",
+		    cfg.gp_pin);
+
+	/* Configure GPIO pins. */
 	for (i = 0; i < HD_PIN_COUNT; i++) {
 		if (state->pins[i] == -1)
 			continue;
+		cfg.gp_pin = state->pins[i];
+		cfg.gp_flags = GPIO_PIN_INPUT;
+		(void)ioctl(state->hd_fd, GPIOSETCONFIG, &cfg);
+	}
 
+	for (i = 0; i < HD_PIN_COUNT; i++) {
+		if (state->pins[i] == -1)
+			continue;
 		cfg.gp_pin = state->pins[i];
 		cfg.gp_flags = GPIO_PIN_OUTPUT;
 		error = ioctl(state->hd_fd, GPIOSETCONFIG, &cfg);
 		if (error != 0)
 			err(1, "configuring pin %d as output failed",
 			    cfg.gp_pin);
+	}
+
+	for (i = 0; i < HD_PIN_COUNT; i++) {
+		if (state->pins[i] == -1)
+			continue;
 
 		hd44780_set_pin(state, i, false);
 	}
 
+	usleep(20000);
 	hd44780_command(state, CMD_RESET);
 
 	if (state->hd_bl_on)
@@ -504,13 +551,27 @@ hd44780_command(struct hd44780_state *state, enum command cmd)
 
 	switch (cmd) {
 	case CMD_RESET:	/* full manual reset and reconfigure as per datasheet */
-		debug(1, "hd44780: reset to %d lines, %s font,%s%s cursor",
-		    state->hd_lines, state->hd_font ? "5x10" : "5x8",
+		debug(1, "hd44780: reset to %d-bit interface, %d lines, "
+		    "%s font,%s%s cursor",
+		    state->hd_ifwidth, state->hd_lines,
+		    state->hd_font ? "5x10" : "5x8",
 		    state->hd_cursor ? "" : " no",
 		    state->hd_blink ? " blinking" : "");
 
+		/*
+		 * This needs to be repeated three times to guarantee a state
+		 * where the desired mode can be configured.
+		 */
 		val = HD_CMD_SETMODE;
+		val |= HD_MODE_8BIT_IF;
+		hd44780_output4(state, HD_COMMAND, val);
+		usleep(10000);
+		hd44780_output4(state, HD_COMMAND, val);
+		usleep(1000);
+		hd44780_output4(state, HD_COMMAND, val);
+		usleep(1000);
 
+		val = HD_CMD_SETMODE;
 		if (state->hd_ifwidth == 8)
 			val |= HD_MODE_8BIT_IF;
 		if (state->hd_lines != 1)
@@ -519,13 +580,12 @@ hd44780_command(struct hd44780_state *state, enum command cmd)
 			val |= HD_MODE_LARGE_FONT;
 
 		/*
-		 * Need to be repeated three to esnure transition from any
-		 * interface width to the requested interface width.
+		 * At this point the display is in 8-bit mode, so execute
+		 * a command to enter the 4-bit mode if needed.
 		 */
-		hd44780_output(state, HD_COMMAND, val);
-		usleep(10000);
-		hd44780_output(state, HD_COMMAND, val);
-		usleep(10000);
+		if (state->hd_ifwidth == 4)
+			hd44780_output4(state, HD_COMMAND, val);
+
 		hd44780_output(state, HD_COMMAND, val);
 		usleep(10000);
 
