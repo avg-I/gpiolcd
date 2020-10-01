@@ -36,10 +36,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <err.h>
 #include <errno.h>
+#include <assert.h>
 #include <sysexits.h>
 
 #include <sys/gpio.h>
@@ -358,78 +360,69 @@ do_char(struct hd44780_state *state, char ch)
 }
 
 static void
-hd44780_strobe(struct hd44780_state *state)
+hd44780_set_pin(struct hd44780_state *state, enum hd_pin_id pin, bool on)
 {
 	struct gpio_req req;
 	int err;
 
-	req.gp_pin = state->pins[HD_PIN_E];
-	req.gp_value = 1;
+	assert(state->pins[pin] != -1);
+	req.gp_pin = state->pins[pin];
+	req.gp_value = on;
 	err = ioctl(state->hd_fd, GPIOSET, &req);
 	if (err != 0)
 		debug(1, "%s: error %d\n", __func__, errno);
+}
+
+static void
+hd44780_strobe(struct hd44780_state *state)
+{
+	usleep(20);
+	hd44780_set_pin(state, HD_PIN_E, true);
 	usleep(40);
-	req.gp_value = 0;
-	(void)ioctl(state->hd_fd, GPIOSET, &req);
+	hd44780_set_pin(state, HD_PIN_E, false);
+	usleep(20);
 }
 
 /* FIXME: hardcoded to 4-bit data interface. */
 static void
 hd44780_output(struct hd44780_state *state, enum reg_type type, uint8_t data)
 {
-	struct gpio_req req;
-	int err, i;
+	int i;
 
 	debug(3, "%s -> 0x%02x", (type == HD_COMMAND) ? "cmd " : "data", data);
 
-	req.gp_pin = state->pins[HD_PIN_RW];
-	req.gp_value = 0;	/* write */
-	err = ioctl(state->hd_fd, GPIOSET, &req);
-	if (err != 0)
-		debug(1, "%s: error %d\n", __func__, errno);
+	hd44780_set_pin(state, HD_PIN_RW, false);
 
-	req.gp_pin = state->pins[HD_PIN_RS];
-	req.gp_value = 1;
 	if (type == HD_COMMAND)
-		req.gp_value = 0;
+		hd44780_set_pin(state, HD_PIN_RS, false);
 	else
-		req.gp_value = 1;
-	(void)ioctl(state->hd_fd, GPIOSET, &req);
-
+		hd44780_set_pin(state, HD_PIN_RS, true);
 
 	/* Set upper nibble of data. */
 	for (i = 0; i < 4; i++) {
-		req.gp_pin = state->pins[HD_PIN_DAT0 + i];
-		req.gp_value = (1 << (i + 4)) & data;
-		(void)ioctl(state->hd_fd, GPIOSET, &req);
+		hd44780_set_pin(state, HD_PIN_DAT0 + i,
+		    ((1 << (i + 4)) & data) != 0);
 	}
 
-	usleep(20);
 	hd44780_strobe(state);
-	usleep(20);
 
 	/* Set lower nibble of data. */
 	for (i = 0; i < 4; i++) {
-		req.gp_pin = state->pins[HD_PIN_DAT0 + i];
-		req.gp_value = (1 << i) & data;
-		(void)ioctl(state->hd_fd, GPIOSET, &req);
+		hd44780_set_pin(state, HD_PIN_DAT0 + i,
+		    ((1 << i) & data) != 0);
 	}
 
-	usleep(20);
 	hd44780_strobe(state);
-	usleep(20);
 }
 
 static void
 hd44780_prepare(char *devname, struct hd44780_state *state)
 {
 	struct gpio_pin cfg;
-	struct gpio_req req;
 	int error, i;
 
 	if ((state->hd_fd = open(devname, O_RDWR, 0)) == -1)
 		err(EX_OSFILE, "can't open '%s'", devname);
-
 
 	/* Configure GPIO pins and reset the LCD. */
 	for (i = 0; i < HD_PIN_COUNT; i++) {
@@ -443,20 +436,13 @@ hd44780_prepare(char *devname, struct hd44780_state *state)
 			err(1, "configuring pin %d as output failed",
 			    cfg.gp_pin);
 
-		req.gp_pin = state->pins[i];
-		req.gp_value = 0;
-		error = ioctl(state->hd_fd, GPIOSET, &req);
-		if (error != 0)
-			err(1, "setting pin %d", req.gp_pin);
+		hd44780_set_pin(state, i, false);
 	}
 
 	hd44780_command(state, CMD_RESET);
 
-	if (state->hd_bl_on) {
-		req.gp_pin = state->pins[HD_PIN_BL];
-		req.gp_value = 1;
-		(void)ioctl(state->hd_fd, GPIOSET, &req);
-	}
+	if (state->hd_bl_on)
+		hd44780_set_pin(state, HD_PIN_BL, true);
 }
 
 static void
