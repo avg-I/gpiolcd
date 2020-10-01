@@ -148,6 +148,7 @@ main(int argc, char *argv[])
 	for (i = 0; i < HD_PIN_COUNT; i++)
 		state->pins[i] = -1;
 	state->pins[HD_PIN_RS] = 0;
+	state->pins[HD_PIN_RW] = 1;
 	state->pins[HD_PIN_E] = 2;
 	state->pins[HD_PIN_DAT0] = 4;
 
